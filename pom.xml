@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      ============================================================================
+      ms-ai —— Spring AI 自学工程（放在 ms-demo 仓库里，但构建完全独立）
+      ============================================================================
+      ★ 目录位置：ms-demo/ms-ai/（2026-10-06 从 C:\Users\hanliangyuan\ms-ai 搬来，
+        目的是和微服务代码一起查看、一次提交）
+      ★ 但注意这里只是「物理位置相邻」，不是 Maven 子模块：
+        · 本 pom 的 parent 是 spring-boot-starter-parent（3.5.16），
+          不继承 ms-demo 根 pom；
+        · 也没有被写进 ms-demo 根 pom 的 <modules>。
+        → 所以在 ms-demo 根目录跑 mvn package 不会构建本工程，
+          必须 cd ms-ai 单独构建。这是刻意的版本隔离。
+
+      ★ 为什么不能做成真正的子模块？
+        现有 ms-demo 用的是 Spring Boot 3.3.5 + SCA 2023.0.3.2，而 Spring AI 1.1.x
+        要求 Spring Boot 3.5.x。作为子模块会共享根 pom 的依赖管理，
+        逼着整个微服务项目升 Boot 版本（Nacos / Gateway / Resilience4j 全都跟着动），
+        风险远大于收益。
+        → 所以保持独立构建，独立部署 8086 端口，由 nginx 挂 /ai/ 前缀转发。
+
+      ★ 版本钉死（2026-10-05 查 Maven 仓库确认，别凭记忆改）：
+        spring-boot-starter-parent  3.5.16   （3.5.x 分支最新）
+        spring-ai-bom               1.1.8    （1.x 主线最新；2.x 需要 Boot 4.x，不用）
+        spring-ai-alibaba-bom       1.1.2.3  （百炼 DashScope 官方 starter，1.x 主线最新）
+        构建 JDK：本机 22，云机 TencentKonaJDK 17 → 字节码按 17 打，两边都能跑
+
+      ★ 两条模型通道（本次学习的核心对照实验）：
+        通道 A  dashscope   = Spring AI Alibaba 原生 DashScope starter
+        通道 B  openai      = Spring AI 官方 OpenAI starter + 百炼的 OpenAI 兼容端点
+        同一个 DASHSCOPE_KEY 两个通道都能用，所以能在一个进程里并存对照。
+      ============================================================================
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.16</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.example</groupId>
+    <artifactId>ms-ai</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>ms-ai</name>
+    <description>Spring AI 自学工程：Hello World 版 Chat + RAG（内存向量库）</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <spring-ai.version>1.1.8</spring-ai.version>
+        <spring-ai-alibaba.version>1.1.2.3</spring-ai-alibaba.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring AI 官方 BOM：统一管理 spring-ai-* 各构件版本 -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!--
+              Spring AI Alibaba BOM：只统一管理 graph / agent-framework 那几个上层模块，
+              ★ 并不包含 DashScope starter（已查过 1.1.2.3 的 BOM 内容确认），
+                所以下面 dashscope 依赖的版本号必须自己显式写，删掉就会
+                'dependencies.dependency.version is missing'。
+            -->
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-bom</artifactId>
+                <version>${spring-ai-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- ===================== 基础 Web ===================== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+          通道 A：Spring AI Alibaba 的 DashScope 原生 starter。
+          —— 提供 DashScopeChatModel + DashScopeEmbeddingModel，
+             直连阿里云百炼（国内服务器无需代理）。
+        -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+            <version>${spring-ai-alibaba.version}</version>
+        </dependency>
+
+        <!--
+          通道 B：Spring AI 官方 OpenAI starter。
+          —— 我们把它指到百炼的 OpenAI 兼容端点 compatible-mode/v1，
+             这样「同一家厂商、同一个 Key」，两种 SDK 可以直接对照：
+             谁的配置更省事、谁的报错信息更清楚、谁的速度更快。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
+        <!--
+          向量库（Hello World 先用内存版 SimpleVectorStore）。
+          说明：SimpleVectorStore 就在这个 spring-ai-vector-store 构件里，
+          没有单独的 xxx-starter-simple（Maven 仓库里查过，确实没有这个 artifact）。
+          后面真要换 PostgreSQL/pgvector 或 Redis Vector，
+          只要把这里的依赖和 application.yml 里的一行 type 换掉即可，Java 代码不动。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-vector-store</artifactId>
+        </dependency>
+
+        <!--
+          生产化向量库：pgvector（PostgreSQL 扩展）。
+          和内存版 SimpleVectorStore 并存（bean 名带 Pg 后缀），
+          /ai/rag/ask 加 store=memory|pg 参数即可同页对比检索质量与延迟。
+          spring-jdbc 由该构件传递引入；DataSource 由 spring.datasource.* 自动装配。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-pgvector-store</artifactId>
+        </dependency>
+        <!--
+          带 HikariCP 连接池：pgvector 的 DataSource/JdbcTemplate 靠它自动装配。
+          spring-jdbc 本体由上面 spring-ai-pgvector-store 传递引入，这里补的是池子。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+          QuestionAnswerAdvisor：Spring AI 官方的 RAG 增强器。
+          干的活 = 把用户问题拿去向量库检索 → 把检索结果拼进 Prompt → 再问大模型。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
+        </dependency>
+
+        <!--
+          Lombok —— 「模板代码」消除器。只在编译期生成代码，运行期零依赖、不进 jar。
+          本项目只用它两个注解，都是为了「一行流」：
+            @RequiredArgsConstructor —— 一行替掉「final 字段 + 手写构造器」（省掉 9 行样板）
+            @Slf4j                   —— 一行替掉 private static final Logger log = LoggerFactory.getLogger(Xxx.class);
+          ★ 版本交给 spring-boot-starter-parent 管（当前 1.18.46），别自己写死。
+          ★ optional=true：不会传染给依赖本模块的人，也不会被打进可执行 jar。
+          ★ IDEA 需要装 Lombok 插件（2020.3 之后已内置），否则编辑器里看不到生成的构造器。
+        -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          Knife4j（中文增强接口文档）+ springdoc-openapi（Swagger 底层）。
+          —— ms-ai 是独立服务（不注册网关），所以自己带一套文档页，别跟网关聚合(/ms/doc.html)打架。
+          —— ★ springdoc 必须用 2.3.0，别乱升：knife4j 4.5.0 是按 springdoc 2.3.0 编译的，
+             2.6.0 把 SpringDocConfigProperties.getGroupConfigs() 返回类型从 List 改成 Set，
+             单服务版 knife4j 会直接 NoSuchMethodError（/v3/api-docs 500，实测踩过）。
+             （网关的 knife4j-gateway 是聚合路径，不走那段代码，所以它能配 2.6.0，这里不能照搬。）
+          —— ms-ai 是 servlet（spring-boot-starter-web），所以用 webmvc 版（不是 webflux 版）。
+          —— 本地访问 http://localhost:8086/doc.html ；服务器经 nginx /ai-doc/ 前缀转发（见 nginx-server.conf）
+        -->
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+            <version>4.5.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.3.0</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>ms-ai</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- 可执行 jar：MANIFEST 里必须是 JarLauncher，否则云机
+                         `java -jar` 会报 no main manifest attribute（薄 jar 的坑） -->
+                    <executable>false</executable>
+                    <layers>
+                        <enabled>false</enabled>
+                    </layers>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

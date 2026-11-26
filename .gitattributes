@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+# ★ 沿用 ms-demo 的血泪教训：shell 脚本必须锁 LF，
+#   否则上云机后有 \r，stop 会静默失效、start 起来的进程没法正常被杀。
+*.sh text eol=lf
+*.java text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.png binary
+*.jar binary
