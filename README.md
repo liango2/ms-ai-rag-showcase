@@ -45,11 +45,23 @@ cd ms-ai && mvn spring-boot:run
 # 接口文档：http://localhost:8080/doc.html
 ```
 
-## 踩过的坑（都是实测）
+## 踩过的坑（都是实测，附参考）
 
-- **裸 URL 不能直接写进 yml**：没有键名的裸字符串会被 SnakeYAML 当 mapping 解析，遇到 `?` 直接报 `could not find expected ':'`，整个应用起不来。
-- **两套 BOM 会打架**：Spring AI 的 BOM 管不到 Alibaba starter，starter 版本必须显式写，否则拉到的版本和核心库对不上。
-- **内存向量库重启即丢**：SimpleVectorStore 适合验证链路，正式语料要落 pgvector，或在启动时从 `knowledge/` 自动重灌。
+- **裸字符串不能直接写进 yml**：一行不带键的 `https://...?tab=xxx` 会被 SnakeYAML 当成「可能的 key」开始扫描，到行尾找不到映射用的冒号，直接报 `could not find expected ':'`，整个应用起不来。**修法**：要么给它一个键名，要么用引号包成字符串。
+  - 规范依据：[YAML 1.2.2 §7.3.3 Plain Style](https://yaml.org/spec/1.2.2/#733-plain-style)，plain scalar 里冒号后跟空格是禁止的
+  - 同类报错在 SnakeYAML 仓库里的 issue：[snakeyaml issues 搜 "could not find expected ':'"](https://github.com/snakeyaml/snakeyaml/issues?q=%22could+not+find+expected+%27%3A%27%22)
+  - Spring Boot 配置加载说明：[Externalized Configuration](https://docs.spring.io/spring-boot/reference/features/external-config.html)
+- **Alibaba starter 的版本没人替你管**：Spring AI 的 BOM 只列 `spring-ai-*` 的版本，`spring-ai-alibaba-starter-dashscope` 不在它的管辖范围，必须自己显式写版本；两个 BOM 若都声明了同一个 artifact，最终生效的是 Maven `import` 先声明的那个（不是"打架"，是覆盖顺序）。
+  - [Spring AI 官方 Getting Started（BOM 用法）](https://docs.spring.io/spring-ai/reference/getting-started.html)
+  - [spring-ai-alibaba 仓库](https://github.com/alibaba/spring-ai-alibaba)
+  - [Maven BOM import 作用域说明](https://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html#bill-of-materials-bom-poms)
+- **内存向量库重启即丢**：`SimpleVectorStore` 适合验证链路，正式语料要落 pgvector，或在启动时从 `knowledge/` 自动重灌。
+
+## 知识库目录装的是什么
+
+- `src/main/resources/knowledge/`：随包发布的种子语料（目前一篇 `spring-ai-核心概念.md`），打包进 jar，启动时被加载器读入并切分、向量化。
+- `deploy/knowledge-seed/`：云机上用的那套语料（教学页编写规范、部署设计、项目备忘、学习笔记、README 等），部署时拷到云机 knowledge 目录，指向它的路径由 `MSAI_KNOWLEDGE_DIR` 控制。
+- 两者都是**纯 md/txt**，换语料不需要改代码，重启即重灌。
 
 ## 已知短板（欢迎直接指出）
 
