@@ -31,6 +31,7 @@ spring:
   datasource:
     url: jdbc:postgresql://127.0.0.1:5432/msai
     username: msai
+    # msai123 仅为本地示例默认值，生产/云机必须用环境变量 MSAI_DB_PASSWORD 覆盖
     password: ${MSAI_DB_PASSWORD:msai123}
     driver-class-name: org.postgresql.Driver
 
