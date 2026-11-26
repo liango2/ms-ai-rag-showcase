@@ -1,0 +1,18 @@
+# 构建产物
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# 本地配置与真实凭证（绝不入库）
+application-local.yml
+application-local.yaml
+deploy.env
+.env
+*.pem
+*.p12
+
+# 日志与临时文件
+*.log
+logs/
+tmp/

@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ms-ai · Spring AI 学习台</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --line:#e3e6ea; --text:#1f2430; --muted:#6b7280;
+    --brand:#2f6fed; --brand-soft:#eaf0ff; --ok:#0a7d3f; --warn:#b7791f; --err:#c0392b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.65 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px;
+         display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;font-weight:650}
+  .badge{font-size:12px;padding:2px 8px;border-radius:20px;background:var(--brand-soft);
+         color:var(--brand);font-weight:600}
+  .status{margin-left:auto;font-size:12.5px;color:var(--muted)}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted);margin-right:5px}
+  .dot.ok{background:var(--ok)} .dot.err{background:var(--err)}
+  main{max-width:1180px;margin:18px auto;padding:0 16px 40px}
+  .tabs{display:flex;gap:8px;margin-bottom:14px}
+  .tab{padding:8px 18px;border-radius:8px;background:var(--card);border:1px solid var(--line);
+       cursor:pointer;font-weight:600;color:var(--muted)}
+  .tab.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  label{font-size:12.5px;color:var(--muted)}
+  select,input[type=text],textarea{border:1px solid var(--line);border-radius:7px;padding:8px 10px;
+       font:inherit;color:var(--text);background:#fff;outline:none}
+  select:focus,textarea:focus,input:focus{border-color:var(--brand)}
+  textarea{width:100%;min-height:78px;resize:vertical}
+  button{background:var(--brand);color:#fff;border:none;border-radius:7px;padding:9px 18px;
+         font:inherit;font-weight:600;cursor:pointer}
+  button:disabled{background:#a9b6d4;cursor:not-allowed}
+  button.ghost{background:#fff;color:var(--brand);border:1px solid var(--brand)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .ans{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff}
+  .ans-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+  .pro{font-size:12px;font-weight:700;padding:2px 9px;border-radius:5px;
+       background:#eef1f6;color:#374151}
+  .pro.dashscope{background:#fff0e6;color:#b45309}
+  .pro.openai{background:#e6f4ea;color:#0a7d3f}
+  .meta{font-size:11.5px;color:var(--muted);margin-left:auto}
+  .answer{white-space:pre-wrap;font-size:13.5px}
+  .meta-line{margin-top:10px;padding-top:9px;border-top:1px dashed var(--line);
+             font-size:11.5px;color:var(--muted)}
+  .err-box{color:var(--err);background:#fdecea;border:1px solid #f5c6c2;border-radius:7px;padding:10px}
+  details{margin-top:9px}
+  summary{cursor:pointer;font-size:12.5px;color:var(--muted)}
+  .src{border-left:3px solid var(--brand);padding:6px 10px;margin:7px 0;background:#fafbfc;
+       font-size:12.5px;color:#374151;border-radius:0 6px 6px 0}
+  .src b{color:var(--brand)}
+  .call{border-left:3px solid var(--brand);padding:6px 10px;margin:6px 0;background:#fafbfc;font-size:12.5px}
+  .json pre{background:#0f172a;color:#d1fae5;border-radius:7px;padding:10px;font-size:12px;overflow:auto}
+  .hint{font-size:12px;color:var(--muted)}
+  code{background:#f0f2f5;padding:1px 5px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>ms-ai · Spring AI 学习台</h1>
+  <span class="badge">Boot 3.5.16 / Spring AI 1.1.8 / Alibaba 1.1.2.3</span>
+  <div class="status" id="status">正在探测…</div>
+</header>
+
+<main>
+  <div class="tabs">
+    <div class="tab on" data-t="chat">💬 Chat（双通道对照）</div>
+    <div class="tab" data-t="memory">🧠 多轮对话（记忆）</div>
+    <div class="tab" data-t="rag">📚 RAG 问答</div>
+    <div class="tab" data-t="tools">🔧 工具调用（Function Calling）</div>
+    <div class="tab" data-t="struct">🧩 结构化输出（Structured Output）</div>
+    <div class="tab" data-t="stream">🖥️ 流式输出（Streaming / SSE）</div>
+    <div class="tab" data-t="agent">🤖 Agent（智能体 / 自主编排）</div>
+    <div class="tab" data-t="token">📊 Token 记账</div>
+    <div class="tab" data-t="interview">🎯 面试练习（3卷模拟）</div>
+    <div class="tab" data-t="flashcard">🗂️ 闪卡进度（STAR）</div>
+  </div>
+
+  <!-- ==================== Chat ==================== -->
+  <div id="chat">
+    <div class="card">
+      <div class="row">
+        <label>通道</label>
+        <select id="chatProvider">
+          <option value="both">both（并排对照）</option>
+          <option value="dashscope">dashscope（Spring AI Alibaba 原生）</option>
+          <option value="openai">openai（官方 starter + 百炼兼容端点）</option>
+          <option value="siliconflow">siliconflow（免费开源：Qwen2.5-7B + bge-m3）</option>
+        </select>
+        <span class="hint">同一模型 qwen-plus，同一 Key，唯一变量是 SDK 封装层</span>
+      </div>
+      <textarea id="chatMsg" placeholder="问点什么？试试：用一句话解释什么是向量检索">用一句话解释什么是向量检索</textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="chatSend" onclick="askChat()">发送</button>
+        <details style="flex:1">
+          <summary>自定义系统提示词（可选）</summary>
+          <textarea id="chatSys" style="margin-top:8px" placeholder="留空则用默认人设"></textarea>
+        </details>
+      </div>
+    </div>
+    <div id="chatOut" class="grid2"></div>
+  </div>
+
+  <!-- ==================== 多轮对话（记忆） ==================== -->
+  <div id="memory" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>通道</label>
+        <select id="memProvider">
+          <option value="siliconflow" selected>siliconflow（免费开源：Qwen2.5-7B + bge-m3）</option>
+          <option value="dashscope">dashscope</option>
+          <option value="openai">openai</option>
+        </select>
+        <label>记忆底座</label>
+        <select id="memStore">
+          <option value="memory">memory（内存，重启丢）</option>
+          <option value="pg" selected>pg（PG落库，工具可查）</option>
+        </select>
+        <label>会话 sessionId</label>
+        <input id="memSession" value="demo-session" placeholder="同一个 sessionId 才共享记忆" style="width:180px">
+        <button class="ghost" onclick="memClear()">清空该会话记忆</button>
+      </div>
+      <div class="hint" style="margin:8px 0">同一 sessionId 连发几句，模型记得上文（记忆条数 history 会涨）。选 <b>pg</b> 底座聊天会写进 PG —— 之后去「工具调用」tab 查这个 sessionId，就能看到非 0 的实锤。</div>
+      <textarea id="memMsg" placeholder="第一句：我的名字叫小韩，请记住。">我的名字叫小韩，请记住。</textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="memSend" onclick="askMemory()">发送并记住</button>
+        <span class="hint" id="memStat"></span>
+      </div>
+    </div>
+    <div id="memOut" class="grid2"></div>
+  </div>
+
+  <!-- ==================== RAG ==================== -->
+  <div id="rag" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>通道</label>
+        <select id="ragProvider">
+          <option value="siliconflow" selected>siliconflow（免费开源：Qwen2.5-7B + bge-m3）</option>
+          <option value="dashscope">dashscope</option>
+          <option value="openai">openai</option>
+          <option value="both">both（并排对照）</option>
+        </select>
+        <label>召回条数 topK</label>
+        <select id="ragTopK">
+          <option>2</option><option selected>4</option><option>6</option><option>8</option>
+        </select>
+        <label>mode</label>
+        <select id="ragMode">
+          <option value="manual">manual（手写拼 Prompt，透明）</option>
+          <option value="advisor">advisor（官方封装，黑盒）</option>
+        </select>
+        <label>向量库 store</label>
+        <select id="ragStore">
+          <option value="memory">memory（内存版 SimpleVectorStore，重启丢）</option>
+          <option value="pg" selected>pg（生产化 pgvector，落盘持久化）</option>
+        </select>
+      </div>
+      <textarea id="ragQ" placeholder="问知识库里的内容">ChatClient 和 ChatModel 有什么区别？</textarea>
+      <div class="row" style="margin-top:10px">
+        <button onclick="askRag()">检索并回答</button>
+        <button class="ghost" onclick="loadStats()">刷新知识库状态</button>
+        <button class="ghost" onclick="reloadKb()">重新灌库</button>
+        <span class="hint" id="ragStat"></span>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        语料来源：<code>./knowledge</code> 外部目录 + jar 内 <code>classpath:knowledge/</code>
+      </div>
+    </div>
+    <div id="ragOut" class="grid2"></div>
+  </div>
+
+  <!-- ==================== 工具调用（Function Calling） ==================== -->
+  <div id="tools" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>通道</label>
+        <select id="toolsProvider">
+          <option value="siliconflow" selected>siliconflow（免费开源：Qwen2.5-7B）</option>
+          <option value="dashscope">dashscope</option>
+          <option value="openai">openai</option>
+        </select>
+        <span class="hint">模型根据提问自主决定调哪个 @Tool 方法</span>
+      </div>
+      <div class="hint" style="margin:8px 0">从易到难三个档位，点击预设提问直接试；也可在下面自定义提问：</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button onclick="askTools('2+3 等于几？')">① 算加法</button>
+        <button onclick="askTools('现在几点了？')">② 查当前时间</button>
+        <button onclick="askTools('会话 demo-session 聊了几句？')">③ 查会话记忆条数</button>
+      </div>
+      <textarea id="toolsMsg" style="margin-top:10px" placeholder="自定义提问，例如：帮我算 1024 * 8，或者：会话 zzz-no-such-99 记住几条了？">2+3 等于几？</textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="toolsSend" onclick="askTools()">发送（让模型调工具）</button>
+        <span class="hint">返回里 toolCalls 即「模型这次真调了哪个工具 + 参数 + 结果」的实锤</span>
+      </div>
+    </div>
+    <div id="toolsOut"></div>
+  </div>
+
+  <!-- ==================== 结构化输出（Structured Output） ==================== -->
+  <div id="struct" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>通道</label>
+        <select id="structProvider">
+          <option value="siliconflow" selected>siliconflow（免费开源：Qwen2.5-7B）</option>
+          <option value="dashscope">dashscope</option>
+          <option value="openai">openai</option>
+        </select>
+        <span class="hint">模型按 DTO 契约输出 JSON，框架自动反序列化成对象</span>
+      </div>
+      <div class="hint" style="margin:8px 0">从易到难两个档位：先单个对象，再对象集合（泛型）。点击预设直接试：</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button onclick="askStruct('entity','我叫小韩，30岁，住在南京，爱好跑步和摄影')">① 单对象 → UserDto</button>
+        <button onclick="askStruct('list','我熟悉 Java、Spring Boot、MySQL，以及一点点 Docker')">② 对象集合 → List&lt;SkillDto&gt;</button>
+      </div>
+      <textarea id="structMsg" style="margin-top:10px" placeholder="自定义文本，模型会按 DTO 字段约束输出 JSON 对象">我叫小韩，30岁，住在南京，爱好跑步和摄影</textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="structSend" onclick="askStruct()">发送（转成对象）</button>
+        <span class="hint">output = 反序列化后的强类型对象；raw = 模型原始 JSON</span>
+      </div>
+    </div>
+    <div id="structOut"></div>
+  </div>
+
+  <!-- ==================== 流式输出（Streaming / SSE） ==================== -->
+  <div id="stream" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>通道</label>
+        <select id="streamProvider">
+          <option value="siliconflow" selected>siliconflow（免费开源：Qwen2.5-7B）</option>
+          <option value="dashscope">dashscope</option>
+          <option value="openai">openai</option>
+        </select>
+        <span class="hint">Flux&lt;String&gt; 边算边吐，一个字一个字推（打字机）</span>
+      </div>
+      <div class="hint" style="margin:8px 0">从易到难三个档位：认识流 → SSE 帧 → 生产版。点击预设直接试：</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button onclick="askStream('chat','用一句话介绍什么是数据库索引')">① 裸流 /chat</button>
+        <button onclick="askStream('sse','用一句话介绍什么是数据库索引')">② SSE 帧 /sse</button>
+        <button onclick="askStream('meta','用一句话介绍什么是数据库索引')">③ 生产版 /chat-meta</button>
+      </div>
+      <textarea id="streamMsg" style="margin-top:10px" placeholder="自定义提问">用一句话介绍你自己</textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="streamSend" onclick="askStream()">发送（流式接收）</button>
+        <span class="hint" id="streamStat"></span>
+      </div>
+    </div>
+    <div id="streamOut" class="out" style="white-space:pre-wrap"></div>
+  </div>
+
+  <!-- ==================== Agent（智能体 / 自主编排） ==================== -->
+  <div id="agent" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>通道</label>
+        <select id="agentProvider">
+          <option value="dashscope" selected>dashscope（工具调用稳）</option>
+          <option value="siliconflow">siliconflow（免费开源：Qwen2.5-7B）</option>
+          <option value="openai">openai</option>
+        </select>
+        <span class="hint">把一篮子 @Tool 全给它，模型自己挑、自己串、多轮调完再回答</span>
+      </div>
+      <div class="hint" style="margin:8px 0">从易到难两个档位：轻量编排 → 决策型 Agent。点击预设直接试；返回里 <code>toolCalls</code> = 模型这次真调了哪几个、顺序如何（对比 toolsProvided 看自主性）：</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button onclick="askAgent('travel','我下周去伦敦，现在那边几点、天气怎么样、穿什么合适？')">① 旅行规划（查时间+天气）</button>
+        <button onclick="askAgent('refund','订单 A002 能不能退？')">② 订单售后决策（查订单+查政策）</button>
+      </div>
+      <textarea id="agentMsg" style="margin-top:10px" placeholder="自定义提问，例如：北京和伦敦时差多少？或：订单 A001 能退吗？">我下周去伦敦，现在那边几点、天气怎么样、穿什么合适？</textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="agentSend" onclick="askAgent()">发送（让模型自主编排工具）</button>
+        <span class="hint">模型面对 4 个工具：timeInCity / weatherInCity / findOrder / returnPolicy，自主挑相关的</span>
+      </div>
+    </div>
+    <div id="agentOut"></div>
+  </div>
+
+  <!-- ==================== Token 记账 ==================== -->
+  <div id="token" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>📊 Token 记账</label>
+        <span class="hint">每次调用（<code>/ai/chat</code> 非流式 + <code>/ai/stream/chat-meta</code> 流式）的 token 用量都落库 <code>token_usage</code> 表，这里查账：去 Chat / 流式 tab 各发几条消息，再回来刷新，数字就出现在"最近调用明细"里（面试口述稿"跑 3 次填数字"抄的就是这张表）</span>
+        <button class="ghost" onclick="loadTokenStats()">刷新</button>
+      </div>
+      <div id="tokenSummary" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="row"><label>近 7 天趋势（按日：调用次数 token 总量）</label></div>
+      <div id="tokenDaily" style="display:flex;gap:6px;align-items:flex-end;height:120px;margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="row"><label>最近调用明细（倒序 10 条）</label></div>
+      <div id="tokenRecent" style="margin-top:10px;font-size:13px;overflow-x:auto"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 面试练习（3 卷模拟） ==================== -->
+  <div id="interview" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>选择卷子</label>
+        <select id="ivPaper" onchange="loadQuestions()">
+          <option value="">加载中…</option>
+        </select>
+        <span class="hint" id="ivPaperStat"></span>
+        <button class="ghost" onclick="loadPapers()">刷新卷进度</button>
+      </div>
+      <div id="ivSummary" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+      <div class="hint" style="margin-top:8px">
+        流程：选卷 → 读题 → 在「我的回答」里口述/打字作答 → <b>保存</b> →
+        点 <b>看答案对比</b> → 左边我的回答、右边标准答案，<b>两栏都可编辑</b>再保存。
+        标准答案按「面试口述」写，30~90 秒可说清，背下来即可张口。
+      </div>
+    </div>
+    <div id="ivList"></div>
+  </div>
+
+  <!-- ==================== 闪卡进度（STAR 话术卡组） ==================== -->
+  <div id="flashcard" style="display:none">
+    <div class="card">
+      <div class="row">
+        <label>🗂️ STAR 话术卡组复习进度</label>
+        <button class="ghost" onclick="loadFlashcards()">刷新</button>
+      </div>
+      <div id="fcSummary" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+      <div style="background:var(--line);border-radius:8px;height:10px;margin-top:10px;overflow:hidden">
+        <div id="fcBar" style="background:var(--brand);height:10px;width:0%"></div>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        每张卡对应 STAR 口述稿的一个模块（开场定位 / S 场景 / P 问题 / A 方案 / R 结果 / 常见追问）。
+        复习节奏建议：新卡 → 学习（learning）→ 隔天复习（reviewing）→ 张口能背（mastered）。
+      </div>
+    </div>
+    <div id="fcList"></div>
+  </div>
+</main>
+
+<script>
+const api = (p, opt) => fetch(p, Object.assign({headers:{'Content-Type':'application/json'}}, opt)).then(r=>r.json());
+
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  const which = t.dataset.t;
+  document.getElementById('chat').style.display = which==='chat'?'':'none';
+  document.getElementById('memory').style.display= which==='memory'?'':'none';
+  document.getElementById('rag').style.display  = which==='rag'?'':'none';
+  document.getElementById('tools').style.display= which==='tools'?'':'none';
+  document.getElementById('struct').style.display= which==='struct'?'':'none';
+  document.getElementById('stream').style.display= which==='stream'?'':'none';
+  document.getElementById('agent').style.display = which==='agent'?'':'none';
+  document.getElementById('token').style.display = which==='token'?'':'none';
+  document.getElementById('interview').style.display = which==='interview'?'':'none';
+  document.getElementById('flashcard').style.display= which==='flashcard'?'':'none';
+  if(which==='rag') loadStats();
+  if(which==='token') loadTokenStats();
+  if(which==='interview') loadPapers();
+  if(which==='flashcard') loadFlashcards();
+});
+
+// ---- 第 5 档 · 多轮对话（ChatMemory）----
+async function askMemory(){
+  const btn=document.getElementById('memSend'), out=document.getElementById('memOut'), st=document.getElementById('memStat');
+  btn.disabled=true; st.textContent='请求中…';
+  try{
+    const store = document.getElementById('memStore').value;
+    const r = await api('/ai/chat/' + (store==='pg'?'memory-pg':'memory'),{method:'POST',body:JSON.stringify({
+      provider:document.getElementById('memProvider').value,
+      sessionId:document.getElementById('memSession').value||'default',
+      message:document.getElementById('memMsg').value
+    })});
+    st.textContent = r.ok ? `✅ 记住了 ${r.history} 条 · ${r.elapsedMs}ms` : `⚠ ${r.error}`;
+    const cls = 'pro '+(r.provider||'').toLowerCase();
+    out.innerHTML = `<div class="ans">
+      <div class="ans-head"><span class="${cls}">${r.provider}</span><span class="meta">会话 ${esc(r.sessionId||'')} · 记忆 ${r.history} 条</span></div>
+      ${r.ok ? `<div class="answer">${esc(r.answer||'')}</div>` : `<div class="err-box">${esc(r.error||'未知错误')}</div>`}
+    </div>` + out.innerHTML;
+  }catch(e){ st.textContent='请求失败：'+e.message; }
+  finally{ btn.disabled=false; }
+}
+async function memClear(){
+  const out=document.getElementById('memOut'), st=document.getElementById('memStat');
+  // 后端没做 clear 接口，这里用换 sessionId 的方式演示「新会话 = 无记忆」；保留清除提示
+  const cid = document.getElementById('memSession').value||'default';
+  out.innerHTML=''; st.textContent='提示：换一个 sessionId 就是全新会话（记忆按 sessionId 隔离，无接口也不影响）';
+}
+
+async function health(){
+  try{
+    const p = await api('/ai/chat/providers');
+    const el = document.getElementById('status');
+    if(p.count>0){
+      el.innerHTML = `<span class="dot ok"></span>可用通道 ${p.count} 个：${p.providers.map(x=>x.provider).join(' / ')}`;
+    }else{
+      el.innerHTML = `<span class="dot err"></span>无可用通道：检查 DASHSCOPE_KEY 是否注入环境变量`;
+    }
+  }catch(e){
+    document.getElementById('status').innerHTML = `<span class="dot err"></span>后端未就绪`;
+  }
+}
+
+function card(r){
+  const cls = 'pro ' + (r.provider||'').toLowerCase();
+  const meta = [
+    r.model ? 'model '+r.model : '',
+    r.elapsedMs!=null ? r.elapsedMs+'ms' : '',
+    r.totalTokens!=null ? 'tokens '+r.totalTokens : ''
+  ].filter(Boolean).join(' · ');
+  return `<div class="ans">
+    <div class="ans-head"><span class="${cls}">${r.provider}</span><span class="meta">${meta}</span></div>
+    ${r.ok ? `<div class="answer">${esc(r.answer||'')}</div>`
+           : `<div class="err-box">${esc(r.error||'未知错误')}</div>`}
+  </div>`;
+}
+
+function ragCard(r){
+  const cls = 'pro ' + (r.provider||'').toLowerCase();
+  const meta = [
+    r.elapsedMs!=null ? '总耗时 '+r.elapsedMs+'ms' : '',
+    r.searchMs!=null ? '检索 '+r.searchMs+'ms' : '',
+    r.recalled!=null ? '召回 '+r.recalled+' 条' : ''
+  ].filter(Boolean).join(' · ');
+  const srcs = (r.sources||[]).map(s=>
+      `<div class="src"><b>[${esc(String(s.source))} #${s.chunkIndex}]</b> ${esc(s.preview||'')}</div>`).join('');
+  return `<div class="ans">
+    <div class="ans-head"><span class="${cls}">${r.provider}</span><span class="meta">${meta}</span></div>
+    ${r.ok ? `<div class="answer">${esc(r.answer||'')}</div>`
+           : `<div class="err-box">${esc(r.error||'未知错误')}</div>`}
+    ${srcs ? `<details open><summary>命中的原文片段（${r.sources.length}）</summary>${srcs}</details>` : ''}
+  </div>`;
+}
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+
+// ---- Token 记账：查 /ai/token/* 三个接口，渲染汇总卡 + 按日趋势 + 最近明细 ----
+async function loadTokenStats(){
+  const el=document.getElementById('tokenSummary'), dl=document.getElementById('tokenDaily'), rc=document.getElementById('tokenRecent');
+  try{
+    // ① 汇总：总账 + 今日账 + 平均耗时
+    const s = await api('/ai/token/stats');
+    el.innerHTML = [
+      ['总调用次数', s.totalCalls], ['累计 token', s.totalTokens],
+      ['今日调用', s.todayCalls], ['今日 token', s.todayTokens], ['平均耗时', s.avgElapsedMs+'ms']
+    ].map(([k,v])=>`<div style="flex:1 1 130px;min-width:0;padding:10px 12px;background:rgba(155,187,244,.10);border-radius:10px;box-sizing:border-box">
+      <div style="font-size:12px;color:#666">${k}</div>
+      <div style="font-size:19px;font-weight:600;color:#1A1B1C;margin-top:3px">${esc(String(v))}</div></div>`).join('');
+    // ② 按日趋势：近 7 天，柱子高度按 token 量归一
+    const d = await api('/ai/token/daily?days=7');
+    const rows = d.rows || [];
+    const max = Math.max(1, ...rows.map(r=>Number(r.tokens)));
+    dl.innerHTML = rows.length ? rows.map(r=>`<div style="flex:1;text-align:center;min-width:0">
+      <div style="background:var(--brand);border-radius:4px 4px 0 0;height:${Math.round(Number(r.tokens)/max*80)+8}px"></div>
+      <div style="font-size:11px;color:#666;margin-top:4px">${esc(r.day)}</div>
+      <div style="font-size:11px;color:#666">${r.tokens}</div></div>`).join('')
+      : '<div style="color:#888;font-size:13px">暂无数据</div>';
+    // ③ 最近明细：倒序 10 条
+    const rr = (await api('/ai/token/recent?limit=10')).rows || [];
+    rc.innerHTML = rr.length
+      ? '<table style="width:100%;border-collapse:collapse;min-width:560px"><tr style="color:#666;font-size:12px;text-align:left">'
+        + ['时间','接口','通道','模型','输入','输出','总计','耗时'].map(h=>`<th style="padding:5px 6px;border-bottom:1px solid var(--line)">${h}</th>`).join('')
+        + '</tr>' + rr.map(r=>`<tr><td style="padding:5px 6px">${esc(r.created_time)}</td><td>${esc(r.endpoint)}</td><td>${esc(r.provider)}</td><td>${esc(r.model||'-')}</td><td>${r.prompt_tokens}</td><td>${r.completion_tokens}</td><td><b>${r.total_tokens}</b></td><td>${r.elapsed_ms!=null?r.elapsed_ms+'ms':'-'}</td></tr>`).join('')
+        + '</table>'
+      : '<div style="color:#888">还没有记账记录：先去「Chat」或「流式输出」tab 发几条消息，再回来刷新</div>';
+  }catch(e){ el.innerHTML = `<div class="err-box">查账失败：${esc(e.message)}</div>`; }
+}
+
+async function askChat(){
+  const btn=document.getElementById('chatSend'), out=document.getElementById('chatOut');
+  btn.disabled=true; btn.textContent='请求中…'; out.innerHTML='<div class="ans">等待模型返回…</div>';
+  try{
+    const sel = document.getElementById('chatProvider').value;
+    const body = {
+      message:document.getElementById('chatMsg').value,
+      system:document.getElementById('chatSys').value
+    };
+    // 后端只做单通道；「双通道对比」由前端调两次完成——同一问题、只换 provider，就比出 SDK 差异
+    const proList = sel==='both' ? ['dashscope','openai'] : [sel];
+    const list = await Promise.all(proList.map(p=>
+      api('/ai/chat',{method:'POST',body:JSON.stringify(Object.assign({provider:p},body))})
+    ));
+    out.innerHTML = list.map(card).join('');
+  }catch(e){ out.innerHTML=`<div class="ans err-box">${esc(e.message)}</div>`; }
+  finally{ btn.disabled=false; btn.textContent='发送'; }
+}
+
+async function askTools(preset){
+  const btn=document.getElementById('toolsSend'), out=document.getElementById('toolsOut');
+  const msg = preset || document.getElementById('toolsMsg').value || '2+3 等于几？';
+  if(!preset) document.getElementById('toolsMsg').value = msg;
+  const body = { provider:document.getElementById('toolsProvider').value, message:msg };
+  btn.disabled=true; btn.textContent='请求中…'; out.innerHTML='<div class="ans">等模型决定调哪个工具…</div>';
+  try{
+    const r = await api('/ai/tools/ask',{method:'POST',body:JSON.stringify(body)});
+    const calls = (r.toolCalls||[]).map(c=>
+      `<div class="call"><b>🔧 ${esc(c.name)}</b> 入参 ${esc(c.input)} → 结果 ${esc(c.output)}</div>`).join('');
+    const cls = 'pro '+(r.provider||'').toLowerCase();
+    out.innerHTML = `<div class="ans">
+      <div class="ans-head"><span class="${cls}">${r.provider}</span><span class="meta">${r.elapsedMs!=null?r.elapsedMs+'ms':''}</span></div>
+      ${r.ok ? `<div class="answer">${esc(r.answer||'')}</div>` : `<div class="err-box">${esc(r.error||'未知错误')}</div>`}
+      ${calls ? `<div class="calls"><b>本次模型实际调用的工具：</b>${calls}</div>` : ''}
+      <details><summary>实时调用的接口参数与返回（JSON）</summary>
+        <div class="json"><b>请求参数</b><pre>${esc(JSON.stringify(body,null,2))}</pre></div>
+        <div class="json"><b>返回</b><pre>${esc(JSON.stringify(r,null,2))}</pre></div>
+      </details>
+    </div>`;
+  }catch(e){ out.innerHTML=`<div class="ans err-box">${esc(e.message)}</div>`; }
+  finally{ btn.disabled=false; btn.textContent='发送（让模型调工具）'; }
+}
+
+async function askStream(path, preset){
+  const btn=document.getElementById('streamSend'), out=document.getElementById('streamOut'), stat=document.getElementById('streamStat');
+  const message = preset || document.getElementById('streamMsg').value || '用一句话介绍什么是数据库索引';
+  if(!preset) document.getElementById('streamMsg').value = message;
+  const body = { provider:document.getElementById('streamProvider').value, message:message };
+  const desc = {chat:['/ai/stream/chat','Flux<String> 裸流：每段一个 data: 帧'], sse:['/ai/stream/sse','ServerSentEvent 显式帧：event:delta + event:done + [DONE]'], meta:['/ai/stream/chat-meta','生产版：meta(面单)+delta(货)+done(回执) 随流返回']}[path];
+  const url = desc[0];
+  btn.disabled=true; out.textContent=''; stat.textContent='请求中…';
+  let acc='', frames=0, done=false, meta=null, doneInfo=null, frameList=[];
+  try{
+    // 前端只懂概念、交给 AI：fetch + ReadableStream 流式读；按 \n\n 切 SSE 帧，识别 event:/data:
+    const resp = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const reader = resp.body.getReader(), dec = new TextDecoder();
+    let buf='';
+    for(;;){
+      const {value, done:d} = await reader.read();
+      if(d) break;
+      buf += dec.decode(value,{stream:true});
+      let idx;
+      while((idx = buf.indexOf('\n\n'))>=0){
+        const frame = buf.slice(0,idx); buf = buf.slice(idx+2);
+        let ev='message', data='';
+        frame.split('\n').forEach(line=>{
+          if(line.startsWith('event:')) ev = line.slice(6).trim();
+          else if(line.startsWith('data:')) data += line.slice(5).trim();
+          else if(line && !line.startsWith(':')) data += line;
+        });
+        frames++;
+        frameList.push({ev:ev, data:data, no:frames});
+        if(ev==='meta'){ try{ meta = JSON.parse(data); }catch(e){} }
+        else if(ev==='done'){ try{ doneInfo = JSON.parse(data); }catch(e){} }
+        else if(ev==='delta' || ev==='message'){ acc += data; out.textContent = acc; }
+        stat.textContent = '已收到 '+frames+' 帧 · '+acc.length+' 字（打字机效果）';
+      }
+    }
+    done = true;
+  }catch(e){ out.textContent = '请求失败：'+e.message; }
+  finally{
+    btn.disabled=false;
+    stat.textContent = done ? ('流式结束，共 '+frames+' 帧 · '+acc.length+' 字') : '（已取消）';
+    const bright = '#3d5a3d', dim = '#96a896';
+    const metaStr = meta ? JSON.stringify(meta,null,2) : '';
+    const doneStr = doneInfo ? JSON.stringify(doneInfo,null,2) : '';
+    // 每帧一行带序号：meta 亮 / 无则暗色占位；delta 逐帧列；done 亮 / 无则暗色占位
+    let rows = frameList.map(f =>
+      '<div style="margin:1px 0;color:' + (f.ev==='meta'||f.ev==='done' ? bright : bright) + '">'
+      + '#' + String(f.no).padStart(2,'0') + ' ' + f.ev + ' : ' + esc(f.data)
+      + (f.ev==='meta' ? '   ← 面单：回显请求参数 + 服务端 startTime' : '')
+      + (f.ev==='done' ? '   ← 回执：统计' : '')
+      + '</div>'
+    ).join('');
+    if(!meta) rows = '<div style="margin:1px 0;color:'+dim+'">meta 帧：本档没有（' + (path==='chat'?'①裸流只有 data: 正文':'②SSE 帧没有面单') + '）</div>' + rows;
+    if(!doneInfo) rows += '<div style="margin:1px 0;color:'+dim+'">done 帧：本档没有（' + (path==='chat'?'①裸流发完即结束':'②/SSE 用 [DONE] 收尾、无统计回执') + '）</div>';
+    out.innerHTML = '<div style="white-space:pre-wrap">' + esc(acc) + '</div>'
+      + '<div style="white-space:pre-wrap;margin-top:10px;color:'+bright+'">────────── 本次 HTTP 调用记录 ──────────</div>'
+      + '<div style="white-space:pre-wrap;color:'+bright+'">Method : POST　URL : ' + esc(url) + '　← ' + desc[1] + '</div>'
+      + '<div style="white-space:pre-wrap;color:'+bright+'">返回类型 : text/event-stream（SSE 长连接，逐帧 data: 推送）</div>'
+      + '<div style="white-space:pre-wrap;color:'+bright+'">── 请求（前端真实发出）── 请求体 : ' + esc(JSON.stringify(body,null,2)) + '</div>'
+      + '<div style="white-space:pre-wrap;color:'+bright+'">── 返回（服务端随流发回，按帧序）──</div>'
+      + rows
+      + '<div style="white-space:pre-wrap;color:'+bright+'">帧统计 : ' + frames + ' 帧 · ' + acc.length + ' 字（' + desc[1] + '）</div>';
+  }
+}
+
+async function askAgent(path, preset){
+  const btn=document.getElementById('agentSend'), out=document.getElementById('agentOut');
+  const msg = preset || document.getElementById('agentMsg').value || '我下周去伦敦，现在那边几点、天气怎么样、穿什么合适？';
+  if(!preset) document.getElementById('agentMsg').value = msg;
+  // 预设按钮指定档位；自定义提问按关键词推断（含"退/订单"→refund，否则→travel）
+  const p = path || ((msg.indexOf('退')>=0 || msg.indexOf('订单')>=0) ? 'refund' : 'travel');
+  const url = '/ai/agent/' + p;
+  const body = { provider:document.getElementById('agentProvider').value, message:msg };
+  btn.disabled=true; btn.textContent='请求中…'; out.innerHTML='<div class="ans">模型正在自主决定调哪几个工具…</div>';
+  try{
+    const r = await api(url,{method:'POST',body:JSON.stringify(body)});
+    const calls = (r.toolCalls||[]).map(c=>
+      `<div class="call"><b>🔧 ${esc(c.name)}</b> 入参 ${esc(c.input)} → 结果 ${esc(c.output)}</div>`).join('');
+    const cls = 'pro '+(r.provider||'').toLowerCase();
+    const provided = (r.toolsProvided||[]).map(x=>esc(x)).join(' / ');
+    out.innerHTML = `<div class="ans">
+      <div class="ans-head"><span class="${cls}">${r.provider}</span><span class="meta">${r.elapsedMs!=null?r.elapsedMs+'ms':''}</span></div>
+      ${r.ok ? `<div class="answer">${esc(r.answer||'')}</div>` : `<div class="err-box">${esc(r.error||'未知错误')}</div>`}
+      ${calls ? `<div class="calls"><b>本次模型实际调用的工具（自主挑选 · ${r.toolCalls.length} 个）：</b>${calls}</div>` : '<div class="hint">模型这次没调工具（直接回答了）</div>'}
+      <div class="call"><b>给了模型的一篮子工具（toolsProvided）：</b>${provided}</div>
+      <details><summary>实时调用的接口参数与返回（JSON）</summary>
+        <div class="json"><b>请求参数</b><pre>${esc(JSON.stringify(body,null,2))}</pre></div>
+        <div class="json"><b>返回</b><pre>${esc(JSON.stringify(r,null,2))}</pre></div>
+      </details>
+    </div>`;
+  }catch(e){ out.innerHTML=`<div class="ans err-box">${esc(e.message)}</div>`; }
+  finally{ btn.disabled=false; btn.textContent='发送（让模型自主编排工具）'; }
+}
+
+async function askStruct(path, preset){
+  const btn=document.getElementById('structSend'), out=document.getElementById('structOut');
+  const text = preset || document.getElementById('structMsg').value || '我叫小韩，30岁，住在南京，爱好跑步和摄影';
+  if(!preset) document.getElementById('structMsg').value = text;
+  const body = { provider:document.getElementById('structProvider').value, text:text };
+  const url = path==='list' ? '/ai/struct/list' : '/ai/struct/entity';
+  btn.disabled=true; btn.textContent='请求中…'; out.innerHTML='<div class="ans">等模型按 DTO 契约输出 JSON…</div>';
+  try{
+    const r = await api(url,{method:'POST',body:JSON.stringify(body)});
+    const cls = 'pro '+(r.provider||'').toLowerCase();
+    out.innerHTML = `<div class="ans">
+      <div class="ans-head"><span class="${cls}">${r.provider}</span><span class="meta">${r.elapsedMs!=null?r.elapsedMs+'ms':''}</span></div>
+      ${r.ok ? `<div class="answer">反序列化后的对象：<br><pre style="white-space:pre-wrap">${esc(JSON.stringify(r.output,null,2))}</pre></div>
+               <div class="call"><b>模型原始 JSON（raw）：</b><pre style="white-space:pre-wrap">${esc(r.raw||'')}</pre></div>`
+           : `<div class="err-box">${esc(r.error||'未知错误')}</div>`}
+      <details><summary>实时调用的接口参数与返回（JSON）</summary>
+        <div class="json"><b>请求参数</b><pre>${esc(JSON.stringify(body,null,2))}</pre></div>
+        <div class="json"><b>返回</b><pre>${esc(JSON.stringify(r,null,2))}</pre></div>
+      </details>
+    </div>`;
+  }catch(e){ out.innerHTML=`<div class="ans err-box">${esc(e.message)}</div>`; }
+  finally{ btn.disabled=false; btn.textContent='发送（转成对象）'; }
+}
+
+async function askRag(){  const out=document.getElementById('ragOut');
+  out.innerHTML='<div class="ans">检索中…</div>';
+  try{
+    const data = await api('/ai/rag/ask',{method:'POST',body:JSON.stringify({
+      provider:document.getElementById('ragProvider').value,
+      question:document.getElementById('ragQ').value,
+      topK:parseInt(document.getElementById('ragTopK').value,10),
+      mode:document.getElementById('ragMode').value,
+      store:document.getElementById('ragStore').value
+    })});
+    const list = data.mode==='both' ? data.results : [data.result];
+    out.innerHTML = list.map(ragCard).join('');
+  }catch(e){ out.innerHTML=`<div class="ans err-box">${esc(e.message)}</div>`; }
+}
+
+async function loadStats(){
+  const el=document.getElementById('ragStat');
+  try{
+    const s=await api('/ai/rag/stats');
+    if(s.loading){
+      el.innerHTML = '知识库灌库中…（异步 embedding，几十秒）';
+      setTimeout(loadStats, 3000);
+      return;
+    }
+    el.innerHTML = s.loaded
+      ? `知识库：${s.files} 文件 / ${s.chunks} 片段，上次灌库 ${s.elapsedMs}ms`
+      : `知识库未加载`;
+  }catch(e){ el.textContent='状态获取失败'; }
+}
+
+async function reloadKb(){
+  const el=document.getElementById('ragStat'); el.textContent='重新灌库中…';
+  try{ await api('/ai/rag/reload',{method:'POST'}); await loadStats(); }
+  catch(e){ el.textContent='灌库失败：'+e.message; }
+}
+
+// ---- 面试练习：3 卷模拟（出题 → 作答 → 双栏对比） ----
+async function loadPapers(){
+  const sel=document.getElementById('ivPaper'), sum=document.getElementById('ivSummary'), st=document.getElementById('ivPaperStat');
+  try{
+    const r = await api('/ai/interview/papers');
+    const papers = r.papers||[];
+    const cur = sel.value;
+    sel.innerHTML = papers.length
+      ? papers.map(p=>`<option value="${p.company}">${esc(p.company_name)} · 已作答 ${p.answered}/${p.total}</option>`).join('')
+      : '<option value="">暂无卷子</option>';
+    if(papers.some(p=>p.company===cur)) sel.value=cur;
+    sum.innerHTML = papers.map(p=>`<div style="flex:1 1 130px;min-width:0;padding:10px 12px;background:rgba(155,187,244,.10);border-radius:10px;box-sizing:border-box">
+      <div style="font-size:12px;color:#666">${esc(p.company_name)}</div>
+      <div style="font-size:18px;font-weight:600;color:#1A1B1C;margin-top:3px">${p.answered}/${p.total}<span style="font-size:12px;color:#666;font-weight:400"> 已作答</span></div></div>`).join('');
+    st.textContent = papers.length ? `共 ${papers.length} 份卷子` : '';
+    if(sel.value) loadQuestions();
+  }catch(e){ sum.innerHTML=`<div class="err-box">加载卷子失败：${esc(e.message)}</div>`; }
+}
+
+async function loadQuestions(){
+  const sel=document.getElementById('ivPaper'), list=document.getElementById('ivList');
+  const company = sel.value;
+  if(!company){ list.innerHTML=''; return; }
+  list.innerHTML='<div class="card">加载题目…</div>';
+  try{
+    const r = await api('/ai/interview/questions?company='+company);
+    const qs = r.questions||[];
+    if(!qs.length){ list.innerHTML='<div class="card">该卷暂无题目</div>'; return; }
+    list.innerHTML = qs.map((q,i)=>ivCard(q,i+1)).join('');
+  }catch(e){ list.innerHTML=`<div class="card err-box">加载题目失败：${esc(e.message)}</div>`; }
+}
+
+function ivCard(q,no){
+  const hasAns = q.user_answer && q.user_answer.trim();
+  return `<div class="card" id="ivq${q.id}">
+    <div class="ans-head">
+      <span class="pro">#${no} · ${esc(q.topic)}</span>
+      <span class="meta">${hasAns?'✅ 已作答 · ':''}${esc(String(q.updated_at||'').replace('T',' ').slice(0,16))}</span>
+    </div>
+    <div style="font-size:14px;font-weight:600;margin:6px 0 10px;white-space:pre-wrap">${esc(q.question)}</div>
+    <textarea id="ua${q.id}" placeholder="我的回答：口述要点或打字稿（保存后入库）" style="min-height:72px">${esc(q.user_answer||'')}</textarea>
+    <div class="row" style="margin-top:10px">
+      <button onclick="saveAnswer(${q.id})">保存我的回答</button>
+      <button class="ghost" onclick="toggleCompare(${q.id})">${hasAns?'查看/编辑答案对比':'看答案对比'}</button>
+    </div>
+    <div id="cmp${q.id}" style="display:none">
+      <div class="grid2" style="margin-top:12px">
+        <div class="ans">
+          <div class="ans-head"><span class="pro">我的回答</span></div>
+          <textarea id="ua2${q.id}" style="min-height:120px">${esc(q.user_answer||'')}</textarea>
+        </div>
+        <div class="ans">
+          <div class="ans-head"><span class="pro" style="background:rgba(10,125,63,.12);color:#0a7d3f">标准答案（口述稿）</span></div>
+          <textarea id="ma${q.id}" style="min-height:120px">${esc(q.model_answer||'')}</textarea>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button onclick="saveBoth(${q.id})">保存双栏（两栏都可改）</button>
+        <button class="ghost" onclick="toggleCompare(${q.id})">收起对比</button>
+        <span class="hint">改标准答案 = 沉淀你自己的参考答案</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function saveAnswer(id){
+  const ua = document.getElementById('ua'+id).value;
+  try{
+    const r = await api('/ai/interview/answer/'+id,{method:'PUT',body:JSON.stringify({userAnswer:ua})});
+    if(r.ok){ flashIv('✅ 已保存我的回答 #'+id); loadQuestions(); } else alert('保存失败');
+  }catch(e){ alert('保存失败：'+e.message); }
+}
+
+async function saveBoth(id){
+  const ua = document.getElementById('ua2'+id).value;
+  const ma = document.getElementById('ma'+id).value;
+  try{
+    const r = await api('/ai/interview/answer-both/'+id,{method:'PUT',body:JSON.stringify({userAnswer:ua,modelAnswer:ma})});
+    if(r.ok){ flashIv('✅ 双栏已保存 #'+id); loadQuestions(); } else alert('保存失败');
+  }catch(e){ alert('保存失败：'+e.message); }
+}
+
+function toggleCompare(id){
+  const el=document.getElementById('cmp'+id);
+  if(!el) return;
+  const show = el.style.display==='none';
+  el.style.display = show?'':'none';
+  if(show){
+    const ua1 = document.getElementById('ua'+id);
+    const ua2 = document.getElementById('ua2'+id);
+    if(ua1 && ua2) ua2.value = ua1.value;   // 打开对比时同步最新「我的回答」
+  }
+}
+
+function flashIv(msg){
+  const el=document.getElementById('ivPaperStat'); el.textContent=msg;
+  setTimeout(()=>{ if(el.textContent===msg) el.textContent=''; }, 2500);
+}
+
+// ---- 闪卡进度（STAR 话术卡组） ----
+const FC_STATUS = {new:'新卡', learning:'学习中', reviewing:'复习中', mastered:'已掌握'};
+const FC_COLOR  = {new:'#888888', learning:'#b7791f', reviewing:'#2f6fed', mastered:'#0a7d3f'};
+
+async function loadFlashcards(){
+  const sum=document.getElementById('fcSummary'), bar=document.getElementById('fcBar'), list=document.getElementById('fcList');
+  try{
+    const r = await api('/ai/interview/flashcards');
+    const cards = r.cards||[], s = r.summary||{};
+    const pct = s.total ? Math.round((s.mastered||0)/s.total*100) : 0;
+    bar.style.width = pct+'%';
+    sum.innerHTML = [
+      ['总卡数', s.total], ['已掌握', s.mastered||0], ['学习中', s.in_progress||0], ['新卡', s.fresh||0]
+    ].map(([k,v])=>`<div style="flex:1 1 120px;min-width:0;padding:10px 12px;background:rgba(155,187,244,.10);border-radius:10px;box-sizing:border-box">
+      <div style="font-size:12px;color:#666">${k}</div>
+      <div style="font-size:19px;font-weight:600;color:#1A1B1C;margin-top:3px">${esc(String(v))}</div></div>`).join('');
+    list.innerHTML = cards.length ? cards.map(fcCard).join('') : '<div class="card">暂无闪卡</div>';
+  }catch(e){ sum.innerHTML=`<div class="err-box">加载闪卡失败：${esc(e.message)}</div>`; }
+}
+
+function fcCard(c){
+  const st = FC_STATUS[c.status]||c.status, color = FC_COLOR[c.status]||'#888888';
+  const last = c.last_review_at ? String(c.last_review_at).replace('T',' ').slice(0,16) : '还没复习过';
+  return `<div class="card" style="padding:12px 16px">
+    <div class="ans-head">
+      <span style="font-weight:600">${esc(c.card_title)}</span>
+      <span style="font-size:12px;font-weight:700;padding:2px 9px;border-radius:5px;background:${color}1a;color:${color}">${st}</span>
+      <span class="meta">复习 ${c.review_count} 次 · 上次 ${last}</span>
+    </div>
+    <div class="hint" style="margin:4px 0 8px">${esc(c.note||'')}</div>
+    <div class="row" style="gap:6px">
+      <button onclick="reviewCard('${c.card_key}')">✅ 复习+1</button>
+      <button class="ghost" onclick="setCardStatus('${c.card_key}','learning')">学习中</button>
+      <button class="ghost" onclick="setCardStatus('${c.card_key}','reviewing')">复习中</button>
+      <button class="ghost" onclick="setCardStatus('${c.card_key}','mastered')">🎯 已掌握</button>
+      <button class="ghost" onclick="setCardStatus('${c.card_key}','new')">重置新卡</button>
+    </div>
+  </div>`;
+}
+
+async function reviewCard(key){
+  try{ await api('/ai/interview/flashcard/'+key,{method:'PUT',body:JSON.stringify({review:true})}); loadFlashcards(); }
+  catch(e){ alert('打卡失败：'+e.message); }
+}
+async function setCardStatus(key,status){
+  try{ await api('/ai/interview/flashcard/'+key,{method:'PUT',body:JSON.stringify({status:status})}); loadFlashcards(); }
+  catch(e){ alert('更新失败：'+e.message); }
+}
+
+health(); loadStats();
+</script>
+</body>
+</html>

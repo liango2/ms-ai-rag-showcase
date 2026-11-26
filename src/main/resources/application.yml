@@ -1,0 +1,157 @@
+# ============================================================================
+# ms-ai 配置：Hello World 版 Chat + RAG
+# ============================================================================
+# ★ 密钥安全约定（必须遵守）：
+#   这里一律写成 ${环境变量} 占位符，真 Key 只在云机的 /root/ms-ai/deploy.env 里配，
+#   或本地跑的时候临时 export。绝不能再像 ms-demo 那样把明文塞进仓库 commit。
+# ============================================================================
+
+server:
+  port: 8086
+  # ★ 让 springdoc 读 nginx 传来的 X-Forwarded-Prefix，生成带前缀的 knife4j/swagger 地址
+  #   （服务器经 /ai-doc/ 转发时用；本地直接 localhost:8086 无前缀，不受影响）
+  forward-headers-strategy: framework
+  # 云机 nginx 用 location /ai/ 转发到本机 8086 —— 与现有服务端口不冲突：
+  #   80 nginx / 8080 gateway / 8081 demo 单体 / 8082 user / 8088 order / 8848 nacos / 8086 本服务
+
+spring:
+  application:
+    name: ms-ai
+
+  servlet:
+    multipart:
+      max-file-size: 2MB       # 允许上传小文档做 RAG（md/txt）
+      max-request-size: 2MB
+
+  # ========================================================================
+  # 生产化向量库：pgvector（PostgreSQL 16 + pgvector 扩展）
+  #   DataSource 由这里自动装配 → JdbcTemplate → MyAiConfig 里的 PgVectorStore bean
+  #   建库语句见仓库 ms-ai/db/pgvector-init.sql（CREATE DATABASE/USER/EXTENSION）
+  # ========================================================================
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/msai
+    username: msai
+    password: ${MSAI_DB_PASSWORD:msai123}
+    driver-class-name: org.postgresql.Driver
+
+  ai:
+    # ========================================================================
+    # ★★ 关键设置：关掉 Spring AI 自带的 ChatClient.Builder 自动装配 ★★
+    # ========================================================================
+    # 一般项目里 Spring AI 会自动塞一个 ChatClient.Builder 给你。
+    # 但我们同时挂了 DashScope 和 OpenAI 两套 ChatModel → 容器里有两个 ChatModel bean，
+    # 自动装配不知道该挑哪一个，会直接报 NoUniqueBeanDefinitionException 起不来。
+    # → 关掉它，改成在 AiConfig.java 里显式 new 两个 ChatClient（DashScope 一个、OpenAI 一个），
+    #   这样「哪个通道走哪个 model」看得清清楚楚，也正好是本次对照实验要的。
+    chat:
+      client:
+        enabled: false
+
+    # --------------------------------------------------------------------
+    # 通道 A：DashScope 原生（Spring AI Alibaba）
+    # --------------------------------------------------------------------
+    dashscope:
+      api-key: ${DASHSCOPE_KEY:}          # 环境变量注入；留空则该通道不可用（页面会提示）
+      chat:
+        options:
+          model: qwen-plus                # 通义千问-Plus：便宜、快，Hello World 够用
+          temperature: 0.7
+      embedding:
+        options:
+          model: text-embedding-v3        # 百炼 embedding 模型，1024 维
+
+    # --------------------------------------------------------------------
+    # 通道 B：OpenAI 兼容模式（Spring AI 官方 starter + 百炼兼容端点）
+    # --------------------------------------------------------------------
+    # ★ 为什么 base-url 是这个？
+    #   阿里云百炼提供 OpenAI 协议兼容端点，任何兼容 OpenAI SDK 的代码都能直接连。
+    #   这样两个通道用的是同一个厂商、同一个 Key、同一个模型，
+    #   唯一变量就是「SDK / 封装层」本身 —— 对照实验的变量控制才算干净。
+    openai:
+      api-key: ${DASHSCOPE_KEY:}          # 复用百炼的 Key
+      # ★★ 「重复 /v1」是 OpenAI 兼容端点的头号坑，改任何厂商时都会遇到：★★
+      # Spring AI 的 OpenAI starter 默认接口路径自带 v1 段：
+      #     chat      /v1/chat/completions
+      #     embedding /v1/embeddings
+      # 而百炼兼容端点的 base-url 末尾本身也带了 /v1，两者直接拼接就成了
+      #     .../compatible-mode/v1/v1/embeddings   ← 对端 404（实测：No response body available）
+      # 修复办法二选一，本文件用的是第二种（显式、可查）：
+      #   ① base-url 只写到 /compatible-mode，保留默认 path；
+      #   ② base-url 写全到 /compatible-mode/v1，再显式把 path 改掉。
+      #   注意 path 必须带前导斜杠 —— 写成 "embeddings" 会拼成 .../v1embeddings 同样 404。
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      chat:
+        # ★★ 这里有个「重复 /v1」的坑，改成其它 OpenAI 兼容厂商时也会踩：★★
+        # Spring AI 的 OpenAI starter 默认把接口路径设为 "v1/chat/completions" / "v1/embeddings"，
+        # 而百炼的 base-url 末尾本身就已经带了 /v1（compatible-mode/v1），
+        # 两者一拼就成了 …/compatible-mode/v1/v1/embeddings → HTTP 404 No response body。
+        # 解决办法：显式把路径改成不带 v1 的那一段。
+        # （另一种做法是 base-url 只写到 /compatible-mode，保留默认路径，效果等价。）
+        completions-path: /chat/completions
+        options:
+          model: qwen-plus
+          temperature: 0.7
+      embedding:
+        embeddings-path: /embeddings
+        options:
+          model: text-embedding-v3
+      # 百炼兼容模式下这条路偶发超时，重试交给 Spring AI 自己处理即可（默认行为）
+
+# ============================================================================
+# 自定义配置：RAG 知识库
+# ============================================================================
+msai:
+  # 通道 C：硅基流动（免费开源模型）的 key，由服务器 deploy.env 注入（SILICONFLOW_KEY）
+  siliconflow:
+    api-key: ${SILICONFLOW_KEY:}
+  rag:
+    # 外部知识库目录（相对 jar 的工作目录）。
+    # 放这里的好处：改文档不用重新打包，POST /ai/rag/reload 就能重新灌库。
+    # 云机上我会在 /root/ms-ai/knowledge/ 放你的 ms-demo 学习笔记。
+    external-dir: ${MSAI_KNOWLEDGE_DIR:./knowledge}
+    # 是否扫 classpath 下 resources/knowledge/ 里的内置文档（保证开箱即有数据）
+    load-classpath: true
+    # 启动时是否自动灌库。false = 起得快，得手动调 /ai/rag/reload
+    auto-load: true
+    # 单段文本最大字符数（中文按字符切，简单粗暴但够用）
+    chunk-size: 500
+    # 相邻片段重叠字符数：避免一句话被切两半导致语义丢失
+    chunk-overlap: 80
+    # RAG 默认召回条数
+    top-k: 4
+
+# ============================================================================
+# 接口文档：Knife4j 中文增强 + springdoc（Swagger）底层
+#   本地访问：http://localhost:8086/doc.html（Knife4j）/ http://localhost:8086/swagger-ui.html
+#   服务器访问：http://101.43.45.217/ai-doc/doc.html（nginx /ai-doc/ → 8086 根路径）
+#   ★ ms-ai 是独立服务（不注册网关），自己带一套文档，别混进网关聚合(/ms/doc.html)，
+#     也避开全局 /v3/api-docs → 网关的转发，互不打架。
+# ============================================================================
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    # ★ 接口展示顺序：同一 tag 内先 GET 后 POST；同方法的保持文档顺序（见 OpenApiOrderConfig）
+    #   这样 Chat 的 4 个接口按 1探路→2非流式→3流式→4完整版 排，不被打散
+    operations-sorter: method
+    tags-sorter: alpha
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+logging:
+  level:
+    com.example.ai: DEBUG
+    # 想看 Spring AI 到底把什么 Prompt 发给模型了，把下面这行打开：
+    # org.springframework.ai.chat.client.advisor: DEBUG
+    root: INFO
+
+# 我的记录 ===================
+# 智普 > 我的免费token
+# ★ 别把裸 URL 直接写进 yml：没有键名的裸字符串会被 SnakeYAML 当 mapping 解析，
+#   遇到 '?' 直接报 "could not find expected ':'" → 整个应用起不来（实测踩过）。
+# 领取页：
+# https://bigmodel.cn/finance-center/resource-package/package-mgmt?tab=my
