@@ -1,5 +1,7 @@
 # ms-ai — Spring AI 工程化练习：Chat + RAG 双通道
 
+![学习台界面](docs/screenshot.png)
+
 > **English:** A hands-on Spring AI 1.1.8 + pgvector learning project covering the full LLM pipeline — multi-provider chat (DashScope / SiliconFlow / OpenAI-compatible), RAG over Markdown notes, tool calling, structured output, streaming, and per-call token accounting. Every design trade-off and pitfall is documented below. **Learning project, not a production scaffold** — built to make the internals visible.
 
 一个能跑起来的 Spring AI 练习工程，把「大模型接入 → 检索增强 → 工具调用 → 结构化输出 → 流式 → Token 记账」这条链路，用可切换的多通道实做了一遍。
