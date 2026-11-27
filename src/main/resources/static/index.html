@@ -160,6 +160,12 @@
           <option value="memory">memory（内存版 SimpleVectorStore，重启丢）</option>
           <option value="pg" selected>pg（生产化 pgvector，落盘持久化）</option>
         </select>
+        <label>检索策略</label>
+        <select id="ragStrategy">
+          <option value="vector" selected>vector（纯向量·基线）</option>
+          <option value="hybrid">hybrid（向量+BM25 融合）</option>
+          <option value="hybridRerank">hybridRerank（融合+重排）</option>
+        </select>
       </div>
       <textarea id="ragQ" placeholder="问知识库里的内容">ChatClient 和 ChatModel 有什么区别？</textarea>
       <div class="row" style="margin-top:10px">
@@ -427,8 +433,11 @@ function ragCard(r){
     r.searchMs!=null ? '检索 '+r.searchMs+'ms' : '',
     r.recalled!=null ? '召回 '+r.recalled+' 条' : ''
   ].filter(Boolean).join(' · ');
-  const srcs = (r.sources||[]).map(s=>
-      `<div class="src"><b>[${esc(String(s.source))} #${s.chunkIndex}]</b> ${esc(s.preview||'')}</div>`).join('');
+  const srcs = (r.sources||[]).map(s=>{
+      const diag = (s.vectorRank||s.bm25Rank||s.fusedScore)
+        ? ` <span class="hint">[向量#${s.vectorRank||'-'} BM25#${s.bm25Rank||'-'} 融合${s.fusedScore??'-'} 重排${s.rerankScore??'-'}]</span>` : '';
+      return `<div class="src"><b>[${esc(String(s.source))} #${s.chunkIndex}]</b>${diag} ${esc(s.preview||'')}</div>`;
+    }).join('');
   return `<div class="ans">
     <div class="ans-head"><span class="${cls}">${r.provider}</span><span class="meta">${meta}</span></div>
     ${r.ok ? `<div class="answer">${esc(r.answer||'')}</div>`
@@ -639,7 +648,8 @@ async function askRag(){  const out=document.getElementById('ragOut');
       question:document.getElementById('ragQ').value,
       topK:parseInt(document.getElementById('ragTopK').value,10),
       mode:document.getElementById('ragMode').value,
-      store:document.getElementById('ragStore').value
+      store:document.getElementById('ragStore').value,
+      strategy:document.getElementById('ragStrategy').value
     })});
     const list = data.mode==='both' ? data.results : [data.result];
     out.innerHTML = list.map(ragCard).join('');
