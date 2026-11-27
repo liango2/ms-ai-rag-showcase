@@ -1,5 +1,7 @@
 # ms-ai — Spring AI 工程化练习：Chat + RAG 双通道
 
+> **English:** A hands-on Spring AI 1.1.8 + pgvector learning project covering the full LLM pipeline — multi-provider chat (DashScope / SiliconFlow / OpenAI-compatible), RAG over Markdown notes, tool calling, structured output, streaming, and per-call token accounting. Every design trade-off and pitfall is documented below. **Learning project, not a production scaffold** — built to make the internals visible.
+
 一个能跑起来的 Spring AI 练习工程，把「大模型接入 → 检索增强 → 工具调用 → 结构化输出 → 流式 → Token 记账」这条链路，用可切换的多通道实做了一遍。
 
 > 定位先说清楚：这是**学习工程**，不是生产脚手架。里面的取舍都为「看得见证据」服务，每个坑都记在文档里。
@@ -43,6 +45,40 @@ export DASHSCOPE_KEY=<你的百炼 Key>
 # 3. 跑
 cd ms-ai && mvn spring-boot:run
 # 接口文档：http://localhost:8080/doc.html
+```
+
+## 接口一览（30 秒看懂能干什么）
+
+| 能力 | 接口 | 说明 |
+| --- | --- | --- |
+| Chat 问答 | `POST /ai/chat` | 三通道切换：DashScope / SiliconFlow / OpenAI；另有 `/providers`、`/once`、`/memory` |
+| RAG 问答 | `POST /ai/rag/ask` | `mode=manual` 自己拼 Prompt（透明）/ `advisor` 官方封装；`store=pg\|memory` |
+| 灌库 / 加文档 | `POST /ai/rag/reload`、`POST /ai/rag/add` | 改完 `knowledge/` 里的 md 调 reload 即可重灌 |
+| 灌库状态 | `GET /ai/rag/stats` | 文件数 / 片段数 / 各通道耗时 / 是否还在加载 |
+| 工具调用 | `POST /ai/tools/ask` | 让模型自己决定调不调工具 |
+| Agent | `POST /ai/agent/travel`、`/ai/agent/refund` | 多步工具编排示例 |
+| 结构化输出 | `POST /ai/struct/entity`、`/ai/struct/list` | 直接返回 DTO，不返回一坨字符串 |
+| 流式输出 | `POST /ai/stream/chat`、`/ai/stream/sse` | SSE，逐字蹦 |
+| Token 记账 | `GET /ai/token/recent`、`/stats`、`/daily` | 单次 / 汇总 / 按天 |
+
+一次 RAG 问答的返回长这样（答案 + 命中的原文片段，可解释性就在这儿）：
+
+```json
+{
+  "mode": "single",
+  "store": "memory",
+  "result": {
+    "provider": "dashscope",
+    "ok": true,
+    "answer": "Spring AI 的 Advisor 是…… [spring-ai-核心概念.md #0]",
+    "searchMs": 812,
+    "elapsedMs": 3240,
+    "recalled": 4,
+    "sources": [
+      { "source": "spring-ai-核心概念.md", "chunkIndex": 0, "preview": "Advisor 提供……" }
+    ]
+  }
+}
 ```
 
 ## 踩过的坑（都是实测，附参考）
