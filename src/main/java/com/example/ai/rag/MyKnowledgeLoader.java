@@ -77,6 +77,13 @@ public class MyKnowledgeLoader {
     /** 灌库结果快照，给 /ai/rag/stats 用 */
     private volatile LoadStats lastStats;
 
+    /**
+     * 最近一次灌库的全量文档快照 —— 给 BM25 关键词检索当语料。
+     * 向量检索走 VectorStore，BM25 需要「原文」而不是向量，所以这里留一份内存副本。
+     * volatile 保证灌库线程写完、请求线程立刻可见。
+     */
+    private volatile List<Document> corpus = List.of();
+
     /** 是否正在灌库（/ai/rag/stats 会返回给前端，避免「查到一半」的误判） */
     private volatile boolean loading = false;
 
@@ -146,6 +153,7 @@ public class MyKnowledgeLoader {
         long start = System.currentTimeMillis();
         try {
             var docs = loadDocuments();
+            corpus = docs;                          // 更新 BM25 语料快照（向量库存的是向量，关键词检索要原文）
 
             if (vectorStores.isEmpty()) {
                 log.warn("[RAG] 容器里没有任何 VectorStore bean —— 可能两个通道的 api-key 都没配");
@@ -265,6 +273,11 @@ public class MyKnowledgeLoader {
 
     public LoadStats getLastStats() {
         return lastStats;
+    }
+
+    /** 给 BM25 关键词检索用的全量文档快照（未灌库时为空列表）。 */
+    public List<Document> getCorpus() {
+        return corpus;
     }
 
     /** 中间结构：一个源文件的内容 */
