@@ -16,3 +16,8 @@ deploy.env
 *.log
 logs/
 tmp/
+
+# 私密资料（教学页编写规范，仅本地留存，绝不入库）
+private/
+src/main/resources/docs/教学页编写规范.md
+deploy/knowledge-seed/教学页编写规范.md
