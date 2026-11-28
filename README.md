@@ -83,6 +83,29 @@ cd ms-ai && mvn spring-boot:run
 }
 ```
 
+## 检索策略：从「纯向量」到「混合检索 + 重排」
+
+`POST /ai/rag/ask` 的 `strategy` 参数可切换三种检索策略（缺省 `vector`，行为与最初版本完全一致）：
+
+| strategy | 做法 | 什么时候用 |
+| --- | --- | --- |
+| `vector` | 纯向量召回 topK | 基线；语义相近但用词不同的问题 |
+| `hybrid` | 向量 + BM25 各召回一批，用 **RRF（倒数排名融合）** 合并去重 | 问题里含专有名词、数字、人名（向量对这些不敏感） |
+| `hybridRerank` | 在 hybrid 之上再按「查询词覆盖度 + 命中位置」重排 | 想要最佳排序，多一步 CPU 计算（零模型、毫秒级） |
+
+**为什么混合**：向量擅长语义近似，BM25 擅长精确词命中，两者互补。RRF 只融合「名次」不融合「分数」——两者的量纲根本不同（余弦 ~0-1，BM25 ~0-10），加权求和得拍脑袋调权重且换数据集就失效；RRF 零调参、对量纲免疫。
+
+**纯 Java、零新增依赖**：中文用 bigram 分词（`MyTokenizer`），BM25 打分在 `MyBm25Retriever`，融合在 `MyRrfFuser`，重排在 `MyReranker`——全是能单测的纯逻辑，不引 Lucene/IK。对应单测 `HybridRetrievalTest`（8 个用例）。
+
+**结果可解释**：每次问答返回 `retrieval` 诊断对象，含两路各自的 topK 名次、融合得分、重排前后顺序；`sources[]` 里每个片段带 `vectorRank` / `bm25Rank` / `fusedScore` / `rerankScore`。前端 RAG tab 可切换策略看差异。
+
+```bash
+curl -X POST localhost:8086/ai/rag/ask -H 'Content-Type: application/json' \
+  -d '{"question":"RAG 里 BM25 有什么用","strategy":"hybridRerank","topK":4}'
+```
+
+> 说明：rerank 是**可解释的轻量词汇重排**（不是 cross-encoder 模型），接口已抽象成 `MyReranker.rerank()`，将来换成模型重排不用改外层。Token 压缩另作后续迭代。
+
 ## 踩过的坑（都是实测，附参考）
 
 - **裸字符串不能直接写进 yml**：一行不带键的 `https://...?tab=xxx` 会被 SnakeYAML 当成「可能的 key」开始扫描，到行尾找不到映射用的冒号，直接报 `could not find expected ':'`，整个应用起不来。**修法**：要么给它一个键名，要么用引号包成字符串。
